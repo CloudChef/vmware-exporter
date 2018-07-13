@@ -6,13 +6,10 @@ DEFAULT_LOG_PATH = '/var/log/cloudchef/vmware_exporter/vmware_exporter.log'
 APP_NAME = 'vmware-exporter'
 log_path = os.environ.get('LOG_PATH', DEFAULT_LOG_PATH)
 
-vmware_cloudentry_path = '/v1/kv/cmp/cloud_entry/vsphere?recurse'
-vmware_vms_path = '/v1/kv/cmp/resource/vms?recurse'
+cloudentry_path = '/v1/kv/cmp/cloud_entry/vsphere?recurse'
+vms_path = '/v1/kv/cmp/resource/vms?recurse'
 
-vm_labels = ['deployment_id', 'node_id', 'node_instance_id',
-             'server_type', 'external_id', 'external_name',
-             'tenant_id', 'business_group_id', 'business_group_name',
-             'project_id', 'project_name', 'owner_ids']
+vm_labels = ['external_id', 'external_name']
 
 metric_list = {}
 metric_list['vms'] = {
@@ -130,5 +127,5 @@ data_properties = ["summary.capacity", "summary.freeSpace", "summary.uncommitted
                    "summary.name", "host", "vm", "summary.datastore"]
 host_properties = ["name", "summary.quickStats.overallCpuUsage", "summary.host",
                    "summary.quickStats.overallMemoryUsage", "summary.hardware.memorySize",
-                   "summary.hardware.cpuMhz", "summary.hardware.numCpuCores",
+                   "summary.hardware.cpuMhz",  "summary.hardware.numCpuCores",
                    "summary.runtime.bootTime", "summary.runtime.powerState"]
