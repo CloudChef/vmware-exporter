@@ -14,6 +14,7 @@ import base64
 import logging
 import requests
 import copy
+from Crypto.Cipher import AES
 
 from datetime import datetime
 import multiprocessing
@@ -49,22 +50,22 @@ class VMWareMetricsResource(Resource):
     def get_vmwares(self):
         vmwares = dict()
         try:
-            request_vmware_url = self.consul_url + constants.vmware_cloudentry_path
+            request_vmware_url = self.consul_url + constants.cloudentry_path
             logger.info('Begin to obtain message of vmwares from consul.')
-            vmware_results = json.loads(
-                requests.get(request_vmware_url).text)
+            vmware_results = json.loads(requests.get(request_vmware_url).text)
             logger.info('Finished obtaining message of vmwares '
                         'from consul with data: {}'.format(vmware_results))
             for result in vmware_results:
                 value_encoded = result.get('Value')
                 if not value_encoded:
-                    logger.warn('Get empty value from consul with key {}.'.format(
-                        result.get('Key')))
+                    logger.warn(
+                        'Get empty value from consul with key {}.'.format(
+                            result.get('Key')))
                     continue
                 value = json.loads(base64.b64decode(value_encoded))
                 if value.get('status') != "RUNNING":
                     continue
-                value['password'] = self.value['password']
+                value['password'] = self.decrypt_password(value['password'])
                 key = '_'.join([value['host'], value['username']])
                 if vmwares.get(key):
                     vmwares[key].append(value)
@@ -73,28 +74,43 @@ class VMWareMetricsResource(Resource):
             return vmwares
         except Exception as e:
             logger.error(
-                'Get vmware message from consul failed: {}'.format(e.message))
+                'Obtain message of vmwares from consul failed: {}'.format(
+                    e.message))
             return vmwares
 
     def get_vms(self, cloud_entry_ids):
         try:
             vms = dict()
-            request_vm_url = self.consul_url + constants.vmware_vms_path
+            request_vm_url = self.consul_url + constants.vms_path
             logger.info('Begin to obtain message of vms from consul.')
-            vm_results = json.loads(
-                requests.get(request_vm_url).text)
-            logger.info('Finished obtaining message of vms '
-                        'from consul with data length: {}'.format(len(vm_results)))
+            vm_results = json.loads(requests.get(request_vm_url).text)
+            logger.info(
+                'Finished getting vms from consul, number of vms: {}'.format(
+                    len(vm_results)))
             for result in vm_results:
-                if result['Value']:
-                    value = json.loads(base64.b64decode(result['Value']))
-                    if value.get('monitor_source_type') == 'hypervisor' \
-                            and value.get('cloud_entry_id') in cloud_entry_ids:
-                        vms[value['external_id']] = value
+                if not result['Value']:
+                    return vms
+
+                value = json.loads(base64.b64decode(result['Value']))
+                monitor_type = value.get('monitor_source_type', None)
+                cloud_entry_id = value.get('cloud_entry_id', None)
+                if monitor_type == 'hypervisor' and \
+                        cloud_entry_id in cloud_entry_ids:
+                    vms[value['external_id']] = value
             return vms
         except Exception as e:
             logger.error("Get vms from consul failed: {}".format(e.message))
             return vms
+
+    def decrypt_password(self, password):
+        if not password:
+            return None
+
+        def unpad(s): return s[0:-ord(s[-1])]
+        key = "abcdef"
+        cipher = AES.new(key)
+        decrypted = unpad(cipher.decrypt(password.decode('hex')))
+        return decrypted
 
     def render_GET(self, request):
         path = request.path.decode()
@@ -133,8 +149,9 @@ class VMWareMetricsResource(Resource):
             cloud_entry_ids = []
             for value in vmwares[key]:
                 cloud_entry_ids.append(value['cloud_entry_id'])
-            process = Process(target=self.generate_latest_target,
-                              args=(si, key, cloud_entry_ids, target, return_dict))
+            process = Process(
+                target=self.generate_latest_target,
+                args=(si, key, cloud_entry_ids, target, return_dict))
             process.start()
             process.join()
 
@@ -148,7 +165,8 @@ class VMWareMetricsResource(Resource):
     def _generate_output_text(self, metric):
         lines = []
         lines.append('# HELP {0} {1}'.format(
-            metric.name, metric.documentation.replace('\\', r'\\').replace('\n', r'\n')))
+            metric.name,
+            metric.documentation.replace('\\', r'\\').replace('\n', r'\n')))
         lines.append('\n# TYPE {0} {1}\n'.format(metric.name, metric.type))
 
         for name, labels, value in metric.samples:
@@ -156,13 +174,15 @@ class VMWareMetricsResource(Resource):
             if labels:
                 labelstr = '{{{0}}}'.format(','.join(
                     ['{0}="{1}"'.format(
-                        k, v.replace('\\', r'\\').replace('\n', r'\n').replace('"', r'\"'))
+                        k, v.replace('\\', r'\\').replace(
+                            '\n', r'\n').replace('"', r'\"'))
                      for k, v in sorted(labels.items())]))
             lines.append('{0}{1} {2}\n'.format(
                 name, labelstr, _floatToGoString(value)))
         return lines
 
-    def generate_latest_target(self, si, key, cloud_entry_ids, target, return_dict):
+    def generate_latest_target(self, si, key, cloud_entry_ids,
+                               target, return_dict):
         output = []
         for metric in self.collect(si, cloud_entry_ids, target):
             text_lines = self._generate_output_text(metric)
@@ -179,10 +199,14 @@ class VMWareMetricsResource(Resource):
             metrics.update(metric_list[key])
         self.metrics = metrics
 
-        logger.info("[{0}] [PID-{1}] Start collecting vcenter metrics for {2}".format(
-            datetime.utcnow().replace(tzinfo=pytz.utc), os.getpid(), target))
-        print("[{0}] [PID-{1}] Start collecting vcenter metrics for {2}".format(
-            datetime.utcnow().replace(tzinfo=pytz.utc), os.getpid(), target))
+        logger.info(
+            "[{0}] [PID-{1}] Start collecting vcenter metrics for {2}".format(
+                        datetime.utcnow().replace(tzinfo=pytz.utc),
+                        os.getpid(), target))
+        print(
+            "[{0}] [PID-{1}] Start collecting vcenter metrics for {2}".format(
+                datetime.utcnow().replace(tzinfo=pytz.utc),
+                os.getpid(), target))
 
         obj_types = {
             vim.VirtualMachine: constants.vm_properties,
@@ -197,16 +221,13 @@ class VMWareMetricsResource(Resource):
             if obj_type is vim.VirtualMachine:
                 consul_vms = self.get_vms(cloud_entry_ids)
                 if consul_vms:
-                    data = pchelper.collect_properties(si, view_ref=view,
-                                                       obj_type=obj_type,
-                                                       path_set=properties,
-                                                       include_mors=True,
-                                                       vms=consul_vms)
+                    data = pchelper.collect_properties(
+                        si, view_ref=view, obj_type=obj_type,
+                        path_set=properties, include_mors=True, vms=consul_vms)
             else:
-                data = pchelper.collect_properties(si, view_ref=view,
-                                                   obj_type=obj_type,
-                                                   path_set=properties,
-                                                   include_mors=True)
+                data = pchelper.collect_properties(
+                    si, view_ref=view, obj_type=obj_type,
+                    path_set=properties, include_mors=True)
 
             if obj_type is vim.HostSystem:
                 self._vmware_get_hosts(cloud_entry_ids, data)
@@ -253,13 +274,16 @@ class VMWareMetricsResource(Resource):
                     label_value = ','.join(str(e) for e in label_value)
                 label_values.append(label_value)
             for v in vm_ages[k]:
-                vm_snapshot_name = v['vm_snapshot_name'] if v['vm_snapshot_name'] else ''
+                ss_name = v['vm_snapshot_name']
+                vm_snapshot_name = ss_name if ss_name else ''
                 vm_snapshot_time = v['vm_snapshot_timestamp_seconds']
-                self.metrics[sstime_metric_name].add_metric(label_values + [vm_snapshot_name],
-                                                            vm_snapshot_time)
+                self.metrics[sstime_metric_name].add_metric(
+                    label_values + [vm_snapshot_name], vm_snapshot_time)
 
-        logger.info("[{0}] [PID-{1}] Stop collecting vcenter metrics for {2}".format(
-            datetime.utcnow().replace(tzinfo=pytz.utc), os.getpid(), target))
+        logger.info(
+            "[{0}] [PID-{1}] Stop collecting vcenter metrics for {2}".format(
+                datetime.utcnow().replace(tzinfo=pytz.utc),
+                os.getpid(), target))
         print("[{0}] [PID-{1}] Stop collecting vcenter metrics for {2}".format(
             datetime.utcnow().replace(tzinfo=pytz.utc), os.getpid(), target))
 
@@ -280,7 +304,8 @@ class VMWareMetricsResource(Resource):
         return view_ref
 
     def _to_unix_timestamp(self, my_date):
-        return ((my_date - datetime(1970, 1, 1, tzinfo=pytz.utc)).total_seconds())
+        internal_dt = my_date - datetime(1970, 1, 1, tzinfo=pytz.utc)
+        return (internal_dt.total_seconds())
 
     def _vmware_connect(self, vmware, ignore_ssl=True):
         """
@@ -291,23 +316,25 @@ class VMWareMetricsResource(Resource):
             context = ssl._create_unverified_context()
 
         try:
-            logger.info(
-                '[PID-{0}] Begin connecting to vmware {1}'.format(os.getpid(), vmware['host']))
-            si = connect.Connect(vmware['host'],
-                                 443,
-                                 vmware['username'],
-                                 vmware['password'],
-                                 sslContext=context)
-            logger.info(
-                '[PID-{0}] Connect to vmware {1} successfully.'.format(os.getpid(), vmware['host']))
+            logger.info('[PID-{0}] Begin connecting to vmware {1}'.format(
+                os.getpid(), vmware['host']))
+
+            si = connect.Connect(
+                vmware['host'], 443, vmware['username'],
+                vmware['password'], sslContext=context)
+
+            logger.info('[PID-{0}] Connect to vmware {1} successfully.'.format(
+                    os.getpid(), vmware['host']))
             return si
         except Exception as e:
             if isinstance(e, vmodl.MethodFault):
                 logger.error(
-                    "[PID-{0}] Caught vmodl fault when connect to vmware: {1}".format(os.getpid(), e.message))
+                    "[PID-{0}] Caught vmodl fault when connect to vmware: {1}".format(
+                        os.getpid(), e.message))
             else:
-                logger.error('[PID-{0}] Connection to vmware {1} failed: {2}'.format(
-                    os.getpid(), vmware['host'], e.message))
+                logger.error(
+                    '[PID-{0}] Connection to vmware {1} failed: {2}'.format(
+                        os.getpid(), vmware['host'], e.message))
             return None
 
     def _vmware_disconnect(self, si):
@@ -370,7 +397,8 @@ class VMWareMetricsResource(Resource):
             ds_capacity = ds["summary.capacity"]
             ds_freespace = ds["summary.freeSpace"]
             if "summary.uncommitted" in ds.keys():
-                ds_uncommitted = ds["summary.uncommitted"] if ds["summary.uncommitted"] else 0
+                uncommitted = ds["summary.uncommitted"]
+                ds_uncommitted = uncommitted if uncommitted else 0
             else:
                 ds_uncommitted = 0
             ds_provisioned = ds_capacity - ds_freespace + ds_uncommitted
@@ -382,18 +410,21 @@ class VMWareMetricsResource(Resource):
             host_id = ','.join(host_id)
 
             for cloud_entry_id in cloud_entry_ids:
+                ds_label_values = [cloud_entry_id, ds["summary.name"],
+                                   datastore_id, host_id]
                 self.metrics['vmware_datastore_capacity_size'].add_metric(
-                    [cloud_entry_id, ds["summary.name"], datastore_id, host_id], ds_capacity)
+                    ds_label_values, ds_capacity)
                 self.metrics['vmware_datastore_freespace_size'].add_metric(
-                    [cloud_entry_id, ds["summary.name"], datastore_id, host_id], ds_freespace)
+                    ds_label_values, ds_freespace)
                 self.metrics['vmware_datastore_uncommited_size'].add_metric(
-                    [cloud_entry_id, ds["summary.name"], datastore_id, host_id], ds_uncommitted)
+                    ds_label_values, ds_uncommitted)
                 self.metrics['vmware_datastore_provisoned_size'].add_metric(
-                    [cloud_entry_id, ds["summary.name"], datastore_id, host_id], ds_provisioned)
+                    ds_label_values, ds_provisioned)
+                ds_label_values.pop()
                 self.metrics['vmware_datastore_hosts'].add_metric(
-                    [cloud_entry_id, ds["summary.name"], datastore_id], len(ds["host"]))
+                    ds_label_values, len(ds["host"]))
                 self.metrics['vmware_datastore_vms'].add_metric(
-                    [cloud_entry_id, ds["summary.name"], datastore_id], len(ds["vm"]))
+                    ds_label_values, len(ds["vm"]))
 
     def _vmware_get_vms(self, consul_vms, data):
         """
@@ -406,8 +437,10 @@ class VMWareMetricsResource(Resource):
                                                   labels=vm_labels)
 
         for vm in data:
-            power_state = 1 if vm['summary.runtime.powerState'] == 'poweredOn' else 0
+            rt_power_state = vm['summary.runtime.powerState']
+            power_state = 1 if rt_power_state == 'poweredOn' else 0
             consul_vm = consul_vms.get(vm['summary.vm']._moId)
+
             label_values = []
             for label in vm_labels:
                 if label == 'server_type':
@@ -417,6 +450,7 @@ class VMWareMetricsResource(Resource):
                 if isinstance(label_value, list):
                     label_value = ','.join(str(e) for e in label_value)
                 label_values.append(label_value if label_value else '')
+
             self.metrics['vmware_vm_power_state'].add_metric(
                 label_values, power_state)
 
@@ -429,27 +463,27 @@ class VMWareMetricsResource(Resource):
                 boot_time = vm.get('summary.runtime.bootTime')
                 if boot_time:
                     value = self._to_unix_timestamp(boot_time)
-                    self.metrics['vmware_vm_boot_timestamp_seconds'].add_metric(
-                        label_values, value)
+                    boot_time_key = 'vmware_vm_boot_timestamp_seconds'
+                    self.metrics[boot_time_key].add_metric(label_values, value)
                 disk_infoes = vm.get('guest.disk')
                 if disk_infoes:
                     for i in range(len(disk_infoes)):
                         capacity = float(disk_infoes[i].capacity)
                         free_space = float(disk_infoes[i].freeSpace)
                         disk_path = disk_infoes[i].diskPath
-                        capacity_key = 'vmware_vm_guest_disk_capacity_0' + \
-                            str(i)
-                        free_space_key = 'vmware_vm_guest_disk_free_space_0' + \
-                            str(i)
+                        capacity_key = '_'.join(
+                            ['vmware_vm_guest_disk_capacity', str(i)])
+                        free_space_key = '_'.join(
+                            ['vmware_vm_guest_disk_free_space', str(i)])
                         disk_values = copy.copy(label_values)
                         disk_values.append(disk_path if disk_path else '')
 
-                        self.metrics[capacity_key] = GaugeMetricFamily(capacity_key,
-                                                                       capacity_key,
-                                                                       labels=vm_labels + ['disk_path'])
-                        self.metrics[free_space_key] = GaugeMetricFamily(free_space_key,
-                                                                         free_space_key,
-                                                                         labels=vm_labels + ['disk_path'])
+                        self.metrics[capacity_key] = GaugeMetricFamily(
+                            capacity_key, capacity_key,
+                            labels=vm_labels + ['disk_path'])
+                        self.metrics[free_space_key] = GaugeMetricFamily(
+                            free_space_key, free_space_key,
+                            labels=vm_labels + ['disk_path'])
                         self.metrics[capacity_key].add_metric(
                             disk_values, capacity)
                         self.metrics[free_space_key].add_metric(
@@ -472,40 +506,44 @@ class VMWareMetricsResource(Resource):
         for host in data:
             # Power state
             for cloud_entry_id in cloud_entry_ids:
-                power_state = 1 if host["summary.runtime.powerState"] == 'poweredOn' else 0
+                rt_power_state = host["summary.runtime.powerState"]
+                power_state = 1 if rt_power_state == 'poweredOn' else 0
                 host_id = host['summary.host']._moId
                 host_name = host['name']
 
+                host_label_values = [cloud_entry_id, host_name, host_id]
+
                 self.metrics['vmware_host_power_state'].add_metric(
-                    [cloud_entry_id, host_name, host_id], power_state)
+                    host_label_values, power_state)
 
                 if power_state:
                     # Uptime
-                    if host["summary.runtime.bootTime"]:
-                        boot_time = self._to_unix_timestamp(
-                            host["summary.runtime.bootTime"])
-                        self.metrics['vmware_host_boot_timestamp_seconds'].add_metric(
-                            [cloud_entry_id, host_name, host_id], boot_time)
+                    host_boot_time = host["summary.runtime.bootTime"]
+                    if host_boot_time:
+                        boot_time = self._to_unix_timestamp(host_boot_time)
+                        boot_time_key = 'vmware_host_boot_timestamp_seconds'
+                        self.metrics[boot_time_key].add_metric(
+                            host_label_values, boot_time)
 
                     # CPU Usage (in Mhz)
                     cpu_usage = host["summary.quickStats.overallCpuUsage"]
                     self.metrics['vmware_host_cpu_usage'].add_metric(
-                        [cloud_entry_id, host_name, host_id], cpu_usage)
+                        host_label_values, cpu_usage)
 
                     cpu_core_num = host["summary.hardware.numCpuCores"]
                     cpu_total = host["summary.hardware.cpuMhz"] * cpu_core_num
                     self.metrics['vmware_host_cpu_max'].add_metric(
-                        [cloud_entry_id, host_name, host_id], cpu_total)
+                        host_label_values, cpu_total)
 
                     # Memory Usage (in Mhz)
                     memory_usage = host["summary.quickStats.overallMemoryUsage"]
                     self.metrics['vmware_host_memory_usage'].add_metric(
-                        [cloud_entry_id, host_name, host_id], memory_usage)
+                        host_label_values, memory_usage)
 
                     memory_max = float(
                         host["summary.hardware.memorySize"]) / 1024 / 1024
                     self.metrics['vmware_host_memory_max'].add_metric(
-                        [cloud_entry_id, host_name, host_id], memory_max)
+                        host_label_values, memory_max)
 
 
 def main():
@@ -542,8 +580,8 @@ if __name__ == '__main__':
     logger = logging.getLogger(constants.APP_NAME)
     logger.setLevel(logging.INFO)
     handler = logging.FileHandler(log_path)
-    formatter = logging.Formatter('%(asctime)s - %(name)s '
-                                  '- %(levelname)s - %(message)s')
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(constants.APP_NAME)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
