@@ -14,7 +14,6 @@ import base64
 import logging
 import requests
 import copy
-from Crypto.Cipher import AES
 
 from datetime import datetime
 import multiprocessing
@@ -65,7 +64,7 @@ class VMWareMetricsResource(Resource):
                 value = json.loads(base64.b64decode(value_encoded))
                 if value.get('status') != "RUNNING":
                     continue
-                value['password'] = self.decrypt_password(value['password'])
+                value['password'] = self.value['password']
                 key = '_'.join([value['host'], value['username']])
                 if vmwares.get(key):
                     vmwares[key].append(value)
@@ -96,16 +95,6 @@ class VMWareMetricsResource(Resource):
         except Exception as e:
             logger.error("Get vms from consul failed: {}".format(e.message))
             return vms
-
-    def decrypt_password(self, password):
-        if not password:
-            return None
-
-        def unpad(s): return s[0:-ord(s[-1])]
-        key = "keepsecret"
-        cipher = AES.new(key)
-        decrypted = unpad(cipher.decrypt(password.decode('hex')))
-        return decrypted
 
     def render_GET(self, request):
         path = request.path.decode()
