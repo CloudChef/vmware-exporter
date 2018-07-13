@@ -1,0 +1,11 @@
+[Unit]
+Description=Vmware Exporter
+After=network.target
+[Service]
+EnvironmentFile=-/etc/sysconfig/cloudchef-vmware-exporter
+ExecStart=/usr/bin/python /opt/cloudchef/vmware-exporter/vmware_exporter/vmware_exporter.py -c ${CONSUL_URL}
+ExecStop=/bin/kill -15 $MAINPID
+LimitNOFILE=102400
+
+[Install]
+WantedBy=default.target

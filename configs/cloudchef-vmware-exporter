@@ -1,0 +1,2 @@
+CONSUL_URL=127.0.0.1:8500
+LOG_PATH=/var/log/cloudchef/vmware_exporter/vmware_exporter.log
