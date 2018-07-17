@@ -1,5 +1,5 @@
 # vmware-exporter
-Prometheus exporter for Vmware hosts, integrated with consul for vsphere and vms registering.
+Prometheus exporter integrated with consul for VMWare.
 
 ## Collectors:
 
@@ -42,8 +42,8 @@ Name     | Descripton
 
 
 ## Usage
-- Vmware exporter monitor vmwares which integrated with, need to register vmwares info to consul first.
-- Vmware exporter support filtering vms, only monitor vms' registered on consul.
+- Monitor VMWares which registered on consul service.
+- Monitor vms which registered on consul service.
 
 - Vmware registered info:
 
@@ -59,7 +59,7 @@ Name     | Descripton
 				    "labels": {
 				        "cloud_entry_id": "5d909776-d54c-433e-a212-38068d4e90e3"
 				    }
-				}
+			}
 
 - Vms registered info:
 
@@ -70,64 +70,39 @@ Name     | Descripton
 				    "cloud_entry_id": "09aac4ff-81c3-4978-a337-c300fd290564",
 				    "name": "WindowsServer_01",
 				    "external_id": "vm-2678",
-				}
+			}
+				
+#### Performance:
+- Use PropertyCollector of Pyvmomi for vm filtering.
+- Monitor message of 1000 vms can be got in 15s.
+
 
 #### Installation:
 - cd vmware_exporter
 - sh scripts/install\_vmware_exporter.sh
 
 
-
 #### Launch Service:
 systemctl start cloudchef-vmware-exporter
 
 
-
-#### Verify:
+#### Verification:
 The prometheus metrics will be exposed on http://localhost:9272/metrics
-
 
 
 ### Prometheus configuration
 
-You can use the following parameters in prometheus configuration file. The `params` section is used to manage multiple login/passwords.
-
+Prometheus configuration file: 
 ```
-  - job_name: 'vmware_vcenter'
-    metrics_path: '/metrics'
+  - job_name: 'smartcmp-cloudentry-monitor'
     static_configs:
-      - targets:
-        - 'vcenter.company.com
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: localhost:9272
-
-  - job_name: 'vmware_esx'
-    metrics_path: '/metrics'
-    file_sd_configs:
-      - files:
-        - /etc/prometheus/esx.yml
-    params:
-      section: [esx]
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: localhost:9272
+      - targets: ['127.0.0.1:9272']
 ```
 
 ## References
-
-The VMWare exporter uses theses libraries:
-- [pyVmomi](https://github.com/vmware/pyvmomi) for VMWare connection and filter
-- Prometheus [client_python](https://github.com/prometheus/client_python) for Prometheus supervision
-- [Twisted](http://twistedmatrix.com/trac/) for http server
+Python modules:
+- https://github.com/vmware/pyvmomi
+- http://twistedmatrix.com/trac
 
 The initial code is mainly inspired from:
 - https://www.robustperception.io/writing-a-jenkins-exporter-in-python/
