@@ -73,8 +73,8 @@ Name     | Descripton
 				}
 
 #### Installation:
-cd vmware_exporter
-sh scripts/install\_vmware_exporter.sh
+- cd vmware_exporter
+- sh scripts/install\_vmware_exporter.sh
 
 
 
