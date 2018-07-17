@@ -1,21 +1,54 @@
 # vmware-exporter
-VMWare VCenter Exporter for Prometheus.
+Prometheus exporter for Vmware hosts, integrated with consul for vsphere and vms registering.
 
-Get VMWare VCenter information:
-- Current number of active snapshots
-- Snapshot Unix timestamp creation date
-- Datastore size and other stuff
-- Basic Host metrics
-- Basic registered VMs metrics
+## Collectors:
+
+
+Name     | Descripton
+---------|----------------------
+`vmware_host_boot_timestamp_seconds` | VMWare Host boot time in seconds
+`vmware_host_memory_max`          | VMWare Host Memory Max availability in Mbytes
+`vmware_host_cpu_usage`           | VMWare Host CPU usage in Mhz
+`vmware_host_power_state`          | VMWare Host Power state (On / Off)
+`vmware_host_memory_usage`         | VMWare Host Memory usage in Mbytes
+`vmware_host_cpu_max`             | VMWare Host CPU max availability in Mhz
+`vmware_datastore_uncommited_size`   | VMWare Datastore uncommitted in bytes
+`vmware_datastore_vms`            | VMWare Virtual Machines number using this datastore
+`vmware_datastore_freespace_size`    | VMWare Datastore freespace in bytes
+`vmware_datastore_hosts`          |  VMWare Hosts number using this datastore
+`vmware_datastore_capacity_size`    | VMWare Datasore capacity in bytes
+`vmware_datastore_provisoned_size`   | VMWare Datastore provisoned in bytes
+`vmware_vm_power_state`          | VMWare VM Power state (On / Off)
+`vmware_vm_guest_disk_capacity`    | VMWare VM guest disk capacity
+`vmware_vm_guest_disk_free_space`   | VMWare VM guest disk free space
+`vmware_vm_max_memory_usage`       | VMWare VM max memory usage
+`vmware_vm_compressed_memory`      | VMWare VM compressed memory
+`vmware_vm_host_memory_usage`     | VMWare VM host memory usage
+`vmware_vm_guest_memory_usage`     | VMWare VM guest memory usage
+`vmware_vm_shared_memory`          | VMWare VM shared memory
+`vmware_vm_swapped_memory`         | VMWrre VM swapped memory
+`vmware_vm_ballooned_memory`       | VMWare VM ballooned memory
+`vmware_vm_consumed_overhead_memory` | VMWare VM consumed overhead memory
+`vmware_vm_overall_cpu_usage`      | VMWare VM overall cpu usage
+`vmware_vm_max_cpu_usage`          | VMWare VM max cpu usage
+`vmware_vm_overall_cpu_demand`      | VMWare VM overall cpu demand
+`vmware_vm_num_cpu`              | VMWare Number of processors in the virtual machine 
+`vmware_vm_boot_timestamp_seconds`   | VMWare VM boot time in seconds
+`vmware_vm_storage_uncommitted`    | VMWare VM storage uncommitted
+`vmware_vm_storage_committed_and_uncommitted` | VMWare VM storage of committed and uncommitted
+`vmware_vm_storage_unshared`      | VMWare VM storage unshared
+`vmware_vm_memory_size_mb`         | VMWare VM memory size in MB
+`vmware_vm_snapshots`             | VMWare vm number of snapshots
+
 
 ## Usage
-- Vmware exporter monitor vmwares which register on consul. So you need to register vmwares info to consul first.
-- Vmware exporter support filtering vms, only get filtered vms' monitoring info. So you need to register vms which need monitoring to consul.
+- Vmware exporter monitor vmwares which integrated with, need to register vmwares info to consul first.
+- Vmware exporter support filtering vms, only monitor vms' registered on consul.
 
 - Vmware registered info:
-   consul path: /v1/kv/cmp/cloud_entry/vsphere  #Defined in constants.py
-   Formatter:
 
+			consul path: /v1/kv/cmp/cloud_entry/vsphere  #Defined in constants.py
+			Formatter:
                {
 				    "cloud_entry_id": "5d909776-d54c-433e-a212-38068d4e90e3",
 				    "password": "a83c9514c91e5735a9c70dc0d00cbad4",
@@ -29,9 +62,9 @@ Get VMWare VCenter information:
 				}
 
 - Vms registered info:
-   consul path: /v1/kv/cmp/resource/vms
-   Formatter:
 
+			consul path: /v1/kv/cmp/resource/vms
+			Formatter:
     			{
 				    "monitor_source_type": "none",
 				    "cloud_entry_id": "09aac4ff-81c3-4978-a337-c300fd290564",
@@ -39,18 +72,19 @@ Get VMWare VCenter information:
 				    "external_id": "vm-2678",
 				}
 
-#### Install and run:
+#### Installation:
+cd vmware_exporter
 sh scripts/install\_vmware_exporter.sh
 
 
 
-#### Boot:
+#### Launch Service:
 systemctl start cloudchef-vmware-exporter
 
 
 
 #### Verify:
-Visit Website: http://localhost:9272/metrics
+The prometheus metrics will be exposed on http://localhost:9272/metrics
 
 
 
@@ -88,54 +122,6 @@ You can use the following parameters in prometheus configuration file. The `para
         replacement: localhost:9272
 ```
 
-## Current Status
-
-- VCenter and ESXi 6 and 6.5 have been tested.
-- VM information, Snapshot, Host and Datastore basic information is exported, i.e:
-
-```
-# HELP vmware_snapshots VMWare current number of existing snapshots
-# TYPE vmware_snapshot_count gauge
-vmware_snapshot_timestamp_seconds{vm_name="My Super Virtual Machine"} 2.0
-# HELP vmware_snapshot_timestamp_seconds VMWare Snapshot creation time in seconds
-# TYPE vmware_snapshot_timestamp_seconds gauge
-vmware_snapshot_age{vm_name="My Super Virtual Machine",vm_snapshot_name="Very old snaphot"} 1478146956.96092
-vmware_snapshot_age{vm_name="My Super Virtual Machine",vm_snapshot_name="Old snapshot"} 1478470046.975632
-# HELP vmware_datastore_capacity_size VMWare Datasore capacity in bytes
-# TYPE vmware_datastore_capacity_size gauge
-vmware_datastore_capacity_size{ds_name="ESX1-LOCAL"} 67377299456.0
-# HELP vmware_datastore_freespace_size VMWare Datastore freespace in bytes
-# TYPE vmware_datastore_freespace_size gauge
-vmware_datastore_freespace_size{ds_name="ESX1-LOCAL"} 66349694976.0
-# HELP vmware_datastore_uncommited_size VMWare Datastore uncommitted in bytes
-# TYPE vmware_datastore_uncommited_size gauge
-vmware_datastore_uncommited_size{ds_name="ESX1-LOCAL"} 0.0
-# HELP vmware_datastore_provisoned_size VMWare Datastore provisoned in bytes
-# TYPE vmware_datastore_provisoned_size gauge
-vmware_datastore_provisoned_size{ds_name="ESX1-LOCAL"} 1027604480.0
-# HELP vmware_datastore_hosts VMWare Hosts number using this datastore
-# TYPE vmware_datastore_hosts gauge
-vmware_datastore_hosts{ds_name="ESX1-LOCAL"} 1.0
-# HELP vmware_datastore_vms VMWare Virtual Machines number using this datastore
-# TYPE vmware_datastore_vms gauge
-vmware_datastore_vms{ds_name="ESX1-LOCAL"} 0.0
-# HELP vmware_host_power_state VMWare Host Power state (On / Off)
-# TYPE vmware_host_power_state gauge
-vmware_host_power_state{host_name="esx1.company.com"} 1.0
-# HELP vmware_host_cpu_usage VMWare Host CPU usage in Mhz
-# TYPE vmware_host_cpu_usage gauge
-vmware_host_cpu_usage{host_name="esx1.company.com"} 2959.0
-# HELP vmware_host_cpu_max VMWare Host CPU max availability in Mhz
-# TYPE vmware_host_cpu_max gauge
-vmware_host_cpu_max{host_name="esx1.company.com"} 28728.0
-# HELP vmware_host_memory_usage VMWare Host Memory usage in Mbytes
-# TYPE vmware_host_memory_usage gauge
-vmware_host_memory_usage{host_name="esx1.company.com"} 107164.0
-# HELP vmware_host_memory_max VMWare Host Memory Max availability in Mbytes
-# TYPE vmware_host_memory_max gauge
-vmware_host_memory_max{host_name="esx1.company.com"} 131059.01953125
-```
-
 ## References
 
 The VMWare exporter uses theses libraries:
@@ -151,4 +137,3 @@ The initial code is mainly inspired from:
 ## License
 
 See LICENSE file
-
