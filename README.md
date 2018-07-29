@@ -74,7 +74,7 @@ Name     | Descripton
 				
 #### Performance:
 - Use PropertyCollector of Pyvmomi for vm filtering.
-- Monitor message of 1000 vms can be got in 15s.
+- Monitoring data of 1000 vms can be retrieved within 15s.
 
 
 #### Installation:
@@ -102,7 +102,6 @@ Prometheus configuration file:
 ## References
 Python modules:
 - https://github.com/vmware/pyvmomi
-- http://twistedmatrix.com/trac
 
 The initial code is mainly inspired from:
 - https://www.robustperception.io/writing-a-jenkins-exporter-in-python/
