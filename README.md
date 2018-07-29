@@ -1,5 +1,5 @@
 # vmware-exporter
-Prometheus exporter integrated with consul for VMWare.
+Prometheus exporter integrated with consul for VMWare vCenter. It collects information about individul VM, hosts, datastores, resource pools. In the future, vSAN and NSX components will also be supported.
 
 ## Collectors:
 
